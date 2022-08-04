@@ -1,0 +1,424 @@
+---
+title: "Cancer Rates in the Borders"
+output: html_notebook
+---
+
+
+Source: https://www.opendata.nhs.scot/
+Incidence by health board - 47600 rows - 1996 to (December?) 2020
+Five year incidence by health board - 1632 rows - 2016 - 2020 
+# note that all cancer types excluces C44 = 
+
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(ggplot2)
+library(scales)
+```
+
+```{r}
+incidence_at_scotland_level <- 
+  read_csv(here("raw_data/incidence_at_scotland_level.csv")) 
+
+incidence_by_healthboard <- 
+  read_csv(here("raw_data/incidence_by_health_board.csv"))
+
+five_year_incidence_scotland_level <- 
+  read_csv(here("raw_data/five_year_summary_of_incidence_at_scotland_level.csv"))
+
+five_year_incidence_healthboard <- 
+  read_csv(here("raw_data/five_year_summary_of_incidence_by_health_board.csv"))
+
+healthboards <- read_csv(here("raw_data/geography_codes_and_labels_hb2014_01042019.csv"))
+```
+
+
+I don't think I am going to look at Cancer network region (it has 3 regions 
+rather than health boards) or the all of Scotland as can add health boards 
+
+```{r}
+incidence_at_scotland_level <- 
+  janitor::clean_names(incidence_at_scotland_level)
+
+incidence_by_healthboard <- 
+  janitor::clean_names(incidence_by_healthboard)
+
+five_year_incidence_scotland_level <-
+  janitor::clean_names(five_year_incidence_scotland_level)
+
+five_year_incidence_healthboard <- 
+  janitor::clean_names(five_year_incidence_healthboard)
+
+healthboards <- janitor::clean_names(healthboards)
+```
+
+Note - for health board, the focus is the borders. 
+
+Join health board names to the health board data
+```{r}
+incidence_by_healthboard %>% 
+  distinct(hb)
+
+incidence_by_hb_name_join <- 
+  left_join(incidence_by_healthboard, healthboards, "hb")
+incidence_by_hb_name_join %>% 
+  distinct(hb_name)
+#14 healthboards 
+
+five_year_by_hb_name_join <- 
+  left_join(five_year_incidence_healthboard, healthboards, "hb")
+five_year_by_hb_name_join %>% 
+  distinct(hb_name)
+#12 healthboards 
+```
+```{r}
+# I looked at lots of columns on all df's for NAs 
+incidence_at_scotland_level %>% 
+  summarise(sum(is.na(year)))
+```
+
+I want to look at:
+(NOTE 1. incidence by HB does not have age group differences, 2. scotland wide
+does not have health boards)
+* a comparison with the rest of Scotland - total numbers over time for health b
+* a comparison of cancer count, split by gender
+
+
+```{r}
+phs_colours <- c("#185ADB", "#3F3685", "#9A62A4", "#9295C0", 
+                 "#2F86C6", "#F05454", "#72B046", "#3C5511", 
+                 "#0C7F73", "#9C0F48", "#470D21", "#FC92E3",
+                 "#F8CB2E", "#4FD3C4")
+# #004785 public health Scotland blue
+# #3F3685 public health scot purple
+# #9A62A4 another purple
+# #9295C0 light purple
+# #2F86C6 light blue
+# #E5F4FB almost white blue
+# #72B046 light bright green
+# #3C5511 forest green
+# #0C7F73 teal
+```
+
+```{r}
+hb_totals_comparison <- incidence_by_hb_name_join %>% 
+  filter(cancer_site == "All cancer types" & sex == "All")
+  
+hb_totals_comparison %>% 
+  ggplot()+
+  aes(x = year,
+      y = incidences_all_ages, 
+      colour = hb_name)+
+  geom_point()+
+  geom_line()+
+  scale_colour_manual(values = c("#185ADB", "#3F3685", "#9A62A4", "#9295C0", 
+                 "#2F86C6", "#F05454", "#72B046", "#3C5511", 
+                 "#0C7F73", "#9C0F48", "#470D21", "#FC92E3",
+                 "#F8CB2E", "#4FD3C4"))+
+  scale_y_continuous(breaks = c(1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000))+
+  labs(x = "\n Year", 
+       y = "Total Cancer Cases \n", 
+       title = "Total Cancer Cases by Health Board", 
+       subtitle = "January 1996 to December 2020", 
+       colour = "Health Board")+
+  theme_bw()
+
+# incidence_by_hb_name_join %>% 
+#   group_by(sex) %>% 
+#   summarise(count = n())
+# 
+# five_year_by_hb_name_join %>% 
+#   group_by(sex) %>% 
+#   summarise(count = n())
+```
+Borders most common cancers by sex...
+```{r}
+borders_common_cancers_1996_sex <- incidence_by_hb_name_join %>% 
+  select(cancer_site, year, sex, hb_name, incidences_all_ages) %>% 
+  filter(cancer_site != "All cancer types" 
+         & hb_name == "NHS Borders" 
+         & sex != "All") %>% 
+  group_by(cancer_site, sex) %>% 
+  summarise(total_cases_of_cancer = sum(incidences_all_ages)) %>% 
+  arrange(desc(total_cases_of_cancer))
+
+borders_common_cancers_1996_sex %>% 
+  filter(total_cases_of_cancer > 500) %>% 
+  ggplot()+
+  aes(x = reorder(cancer_site, total_cases_of_cancer), 
+      y = total_cases_of_cancer, 
+      fill = sex)+
+  geom_col()+
+  coord_flip()+
+  facet_wrap(~sex)+
+    labs(x = "\n Total Cases", 
+       y = "Type of Cancer",
+       title = "NHS Borders: 10 Most Common Types of Cancer by Sex",
+       subtitle = "January 1996 to December 2020", 
+       fill = "Sex") +
+  geom_text(aes(label = total_cases_of_cancer), 
+            size = 3, vjust = -0.25, position = position_stack(vjust = 0.5))+
+  theme_bw()
+
+borders_common_cancers_1996_sex %>% 
+  filter(sex == "Female" & total_cases_of_cancer > 380) %>% 
+  ggplot()+
+  aes(x = reorder(cancer_site, total_cases_of_cancer), 
+      y = total_cases_of_cancer, 
+      fill = sex)+
+  geom_col(fill = c("#9C0F48", "#3F3685", "#9A62A4", "#FF6767", 
+                    "#72B046", "#001D6E", "#7EB5A6", "#2F86C6",
+                    "#FF2442", "#FA1E0E"))+
+  coord_flip()+
+  labs(y = "\n Total Cases", 
+       x = "Type of Cancer",
+       title = "NHS Borders - Females: 10 Most Common Types of Cancer",
+       subtitle = "January 1996 to December 2020") +
+  geom_text(aes(label = total_cases_of_cancer), 
+            size = 3, vjust = -0.25, hjust = 1.2, colour = "white")+
+ # geom_text(aes(label = total_cases_of_cancer), 
+  #          size = 3, vjust = -0.25, position = position_stack(vjust = 0.5))+
+  theme_bw()
+
+borders_common_cancers_1996_sex %>% 
+  filter(sex == "Male" & total_cases_of_cancer > 360) %>% 
+  ggplot()+
+  aes(x = reorder(cancer_site, total_cases_of_cancer), 
+      y = total_cases_of_cancer)+
+  geom_col(fill = c("#3F3685", "#185ADB", "#9A62A4", 
+                 "#2F86C6", "#001D6E", "#72B046", 
+                 "#7EB5A6", "#0C7F73", "#5534A5", "#0093AB"))+
+  coord_flip()+
+  labs(y = "\n Total Cases", 
+       x = "Type of Cancer",
+       title = "NHS Borders - Males: 10 Most Common Types of Cancer",
+       subtitle = "January 1996 to December 2020") +
+  geom_text(aes(label = total_cases_of_cancer), 
+            size = 3, vjust = -0.25, hjust = 1.2, colour = "white")+
+  theme_bw()
+```
+
+
+Borders only - highest rates of cancer 
+```{r}
+borders_common_cancers_1996 <- incidence_by_hb_name_join %>% 
+  select(cancer_site, year, sex, hb_name, incidences_all_ages) %>% 
+  filter(cancer_site != "All cancer types" 
+         & hb_name == "NHS Borders" 
+         & sex == "All") %>% 
+  group_by(cancer_site) %>% 
+  summarise(total_incidences = sum(incidences_all_ages)) %>% 
+  arrange(desc(total_incidences))
+
+borders_common_cancers_1996 %>% 
+  filter(total_incidences > 600) %>% 
+  ggplot()+
+  aes(x = reorder(cancer_site, total_incidences),  
+      y = total_incidences)+
+  geom_col()+
+  coord_flip() + 
+  geom_col(fill = c("#3F3685", "#9A62A4", "#9C0F48", "#001D6E", 
+                    "#72B046", "#2F86C6", "#7EB5A6", "#0C7F73",  
+                    "#82C4C3", "#5534A5"))+
+  labs(title = "NHS Borders: 10 Most Common Types of Cancer",
+       subtitle = "1996 to 2020", 
+       y = "Total Cases",
+       x = NULL)+
+  geom_text(aes(label = total_incidences), 
+            size = 3, vjust = -0.25, hjust = 1.2, colour = "white")+
+  theme_bw()
+
+```
+Borders only - last 5 years highest rates of cancer 
+```{r}
+borders_common_cancers_2016 <- five_year_by_hb_name_join %>% 
+  select(cancer_site, year, sex, hb_name, incidences_all_ages) %>% 
+  filter(cancer_site != "All cancer types" 
+         & hb_name == "NHS Borders" 
+         & sex == "All") %>% 
+  group_by(cancer_site) %>% 
+  summarise(total_incidences = sum(incidences_all_ages)) %>% 
+  arrange(desc(total_incidences))
+
+borders_common_cancers_2016 %>% 
+  filter(total_incidences > 160) %>% 
+  ggplot()+
+  aes(x = reorder(cancer_site, total_incidences),  
+      y = total_incidences)+
+  geom_col()+
+  coord_flip() + 
+  geom_col(fill = c("#3F3685", "#9A62A4", "#001D6E", "#72B046", 
+                    "#9C0F48", "#2F86C6", "#7EB5A6", "#82C4C3",
+                    "#0C7F73", "#5534A5"))+
+  labs(title = "NHS Borders: 10 Most Common Types of Cancer",
+       subtitle = "2016 to 2020", 
+       y = "Total Cases", 
+       x = NULL) +
+  geom_text(aes(label = total_incidences), 
+            size = 3, vjust = -0.25, hjust = 1.2, colour = "white")+
+  theme_bw()
+
+```
+borders - 5 - sex
+```{r}
+borders_common_cancers_five_sex <- five_year_by_hb_name_join %>% 
+  select(cancer_site, year, sex, hb_name, incidences_all_ages) %>% 
+  filter(cancer_site != "All cancer types" 
+         & hb_name == "NHS Borders" 
+         & sex != "All") %>% 
+  group_by(cancer_site, sex) %>% 
+  summarise(total_cases_of_cancer = sum(incidences_all_ages)) %>% 
+  arrange(desc(total_cases_of_cancer))
+
+borders_common_cancers_five_sex %>% 
+  filter(total_cases_of_cancer > 110) %>% 
+  ggplot()+
+  aes(x = reorder(cancer_site, total_cases_of_cancer), 
+      y = total_cases_of_cancer, 
+      fill = sex)+
+  geom_col()+
+  coord_flip()+
+  facet_wrap(~sex)+
+    labs(x = "\n Total Cases", 
+       y = "Type of Cancer",
+       title = "NHS Borders: 10 Most Common Types of Cancer by Sex",
+       subtitle = "2016 to 2020", 
+       fill = "Sex") +
+  geom_text(aes(label = total_cases_of_cancer), 
+            size = 3, vjust = -0.25, position = position_stack(vjust = 0.5))+
+  theme_bw()
+
+borders_common_cancers_five_sex %>% 
+  filter(sex == "Female" & total_cases_of_cancer > 81) %>% 
+  ggplot()+
+  aes(x = reorder(cancer_site, total_cases_of_cancer), 
+      y = total_cases_of_cancer)+
+  geom_col()+
+  coord_flip()+
+  geom_col(fill = c("#9C0F48", "#3F3685", "#9A62A4",
+                    "#001D6E","#72B046", "#7EB5A6", "#FF6767",
+                     "#2F86C6", "#FF2442", 
+                    "#82C4C3"))+
+  labs(y = "\n Total Cases", 
+       x = NULL,
+       title = "NHS Borders - Females: 10 Most Common Types of Cancer",
+       subtitle = "2016 to 2020") +
+  geom_text(aes(label = total_cases_of_cancer), 
+            size = 3, vjust = -0.25, hjust = 1.2, colour = "white")+
+ # geom_text(aes(label = total_cases_of_cancer), 
+  #          size = 3, vjust = -0.25, position = position_stack(vjust = 0.5))+
+  theme_bw()
+
+borders_common_cancers_five_sex %>% 
+  filter(sex == "Male" & total_cases_of_cancer > 90) %>% 
+  ggplot()+
+  aes(x = reorder(cancer_site, total_cases_of_cancer), 
+      y = total_cases_of_cancer)+
+  geom_col()+
+  coord_flip()+
+  geom_col(fill = c("#3F3685", "#9A62A4", "#185ADB",
+                    "#2F86C6", "#001D6E", "#72B046", 
+                    "#7EB5A6", "#0C7F73",
+                    "#82C4C3", "#5534A5"))+
+  labs(y = "\n Total Cases", 
+       x = NULL,
+       title = "NHS Borders - Males: 10 Most Common Types of Cancer",
+       subtitle = "2016 to 2020") +
+  geom_text(aes(label = total_cases_of_cancer), 
+            size = 3, vjust = -0.25, hjust = 1.2, colour = "white")+
+  theme_bw()
+```
+
+
+
+
+
+
+Borders only - male vs female
+```{r}
+
+borders_incidences_sex <- incidence_by_hb_name_join %>% 
+  filter(sex != "All" & 
+           hb_name == "NHS Borders" & 
+           cancer_site == "All cancer types")
+
+borders_incidences_sex %>% 
+  ggplot()+
+  aes(x = year, 
+      y = incidences_all_ages, 
+      group = sex, 
+      colour = sex)+
+  geom_point() +
+  geom_line()+
+  labs(x = "\n Year",
+       y = "Cases per Year \n", 
+       colour = "Sex",
+       title = "Count of All Cancer Cases per Year in the Borders by Sex",
+       subtitle = "January 1996 to December 2020")+
+  theme_bw()
+```
+
+in comparison with all of scotland... 
+```{r}
+scotland_incidences_sex <- incidence_at_scotland_level %>% 
+  filter(sex != "All" 
+         & cancer_site == "All cancer types") %>% 
+  group_by(year, sex) %>% 
+  mutate(total_incidences_per_year = sum(incidences_all_ages), .after = 2)
+  
+scotland_incidences_sex %>% 
+  ggplot()+
+  aes(x = year, 
+      y = total_incidences_per_year, 
+      group = sex, 
+      colour = sex)+
+  geom_point() +
+  geom_line()+
+  labs(x = "Year",
+       y = "Incidences per year", 
+       colour = "Sex",
+       title = "Count of all cancer cases across Scotland",
+       subtitle = "Janurary 1996 to December 2020")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle=45, hjust=0.9))
+```
+
+Looked up crude rate but I'm not 100% sure how I would use it: 
+A crude rate is defined as the total number of events, or 
+count, divided by the mid-year total population of the selected geography and 
+multiplied by a constant, which is a multiple of 10. Typical constants used for 
+public health rates include 100, 1,000, 10,000, or 100,000.
+
+
+BUT considering the standardised incidence ratio:
+an SIR is the ratio of the observed number of cancer cases to the expected 
+number of cases multiplied by 100. An SIR of 100 indicates that the number of
+cancer cases observed in the population evaluated is equal to the number of 
+cancer cases expected in the comparison or “normal” population.
+This is why in "incidence_at_scotland_level" all the SIR are 100.
+
+```{r}
+borders_incidences_sex %>% 
+    ggplot()+
+  aes(x = year, 
+      y = standardised_incidence_ratio, 
+      group = sex, 
+      colour = sex)+
+  geom_point() +
+  geom_line() +
+  facet_wrap(~sex)+
+ # intercept_hline(yintercept = 100)+
+  geom_smooth(method='lm', se = FALSE)+
+  labs(x = "\n Year",
+       y = "Standardised Incidence Ratio",
+       title = "NHS Borders: Standardised Incidence Ratio in the Borders",
+       subtitle = "January 1996 to December 2020")+
+  guides(colour = "none") + 
+  theme_bw()+
+  theme(axis.text.x = element_text(angle=45, hjust=0.9))
+```
+
+
+
+
